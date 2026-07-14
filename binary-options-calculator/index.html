@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2357d9">
+  <meta name="description" content="ETH建てバイナリーオプションの再投資・必要連勝数・掛け金推移を計算するツール">
+  <title>ETH連勝シミュレーター</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Binary Options Calculator</p>
+        <h1>ETH連勝シミュレーター</h1>
+        <p class="lead">残高、ペイアウト率、再投資比率、掛け金上限、出金ルールを反映し、必要連勝数と全取引の推移を計算します。</p>
+      </div>
+      <button class="icon-button" id="theme-toggle" type="button" aria-label="表示テーマを切り替える">◐</button>
+    </header>
+
+    <div id="error-box" class="error-box" role="alert" hidden></div>
+
+    <div class="layout">
+      <form id="calculator-form" class="card form-card">
+        <section class="form-section">
+          <h2 class="section-title">目標と残高</h2>
+          <div class="field-grid">
+            <label class="wide">開始残高
+              <div class="input-with-suffix"><input name="startBalance" inputmode="decimal" required><span class="suffix">ETH</span></div>
+            </label>
+            <div class="wide">
+              <label>目標の種類</label>
+              <div class="segmented">
+                <label><input type="radio" name="goalMode" value="withdrawJpy"><span>日本円で出金</span></label>
+                <label><input type="radio" name="goalMode" value="withdrawEth"><span>ETHで出金</span></label>
+                <label><input type="radio" name="goalMode" value="balanceEth"><span>ETH残高</span></label>
+              </div>
+            </div>
+            <label id="target-jpy-field" class="wide">目標出金額
+              <div class="input-with-suffix"><input name="targetJpy" inputmode="numeric"><span class="suffix">円</span></div>
+            </label>
+            <label id="target-eth-field" class="wide" hidden><span id="target-eth-label">目標出金量</span>
+              <div class="input-with-suffix"><input name="targetEth" inputmode="decimal"><span class="suffix">ETH</span></div>
+            </label>
+            <div class="wide inline-action">
+              <label>ETH/JPY価格
+                <div class="input-with-suffix"><input name="ethJpy" inputmode="numeric" required><span class="suffix">円</span></div>
+              </label>
+              <button id="fetch-price" class="secondary-button" type="button">現在価格</button>
+            </div>
+            <p id="price-status" class="helper wide">価格は手動でも変更できます。</p>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <h2 class="section-title">取引条件</h2>
+          <div class="field-grid">
+            <label>ペイアウト率
+              <div class="input-with-suffix"><input name="payoutPercent" inputmode="decimal" required><span class="suffix">%</span></div>
+            </label>
+            <label>再投資比率
+              <div class="input-with-suffix"><input name="reinvestPercent" inputmode="decimal" required><span class="suffix">%</span></div>
+            </label>
+            <label>最小掛け金
+              <div class="input-with-suffix"><input name="minStake" inputmode="decimal" required><span class="suffix">ETH</span></div>
+            </label>
+            <label>最大掛け金
+              <div class="input-with-suffix"><input name="maxStake" inputmode="decimal" required><span class="suffix">ETH</span></div>
+            </label>
+            <label>掛け金単位
+              <div class="input-with-suffix"><input name="stakeStep" inputmode="decimal" required><span class="suffix">ETH</span></div>
+            </label>
+            <label>端数処理
+              <select name="roundingMode">
+                <option value="floor">切り捨て</option>
+                <option value="round">四捨五入</option>
+                <option value="ceil">切り上げ</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="form-section" data-withdrawal-field>
+          <h2 class="section-title">出金条件</h2>
+          <div class="field-grid">
+            <label>出金単位
+              <div class="input-with-suffix"><input name="withdrawalStep" inputmode="decimal"><span class="suffix">ETH</span></div>
+            </label>
+            <label>出金後に残す資金
+              <div class="input-with-suffix"><input name="reserveEth" inputmode="decimal"><span class="suffix">ETH</span></div>
+            </label>
+          </div>
+        </section>
+
+        <input type="hidden" name="maxRounds" value="500">
+        <div class="form-actions">
+          <button class="primary-button" type="submit">計算する</button>
+          <button id="reset-form" class="text-button" type="button">初期化</button>
+        </div>
+      </form>
+
+      <section id="result-panel" class="results" aria-live="polite">
+        <div class="summary-grid">
+          <article class="card metric primary">
+            <div class="metric-label">必要連勝数</div>
+            <div id="wins-value" class="metric-value">—</div>
+            <div class="metric-sub">すべて勝利した場合</div>
+          </article>
+          <article class="card metric">
+            <div class="metric-label">必要な口座残高</div>
+            <div id="target-balance-value" class="metric-value">—</div>
+            <div class="metric-sub">出金後に残す資金を含む</div>
+          </article>
+          <article class="card metric positive">
+            <div class="metric-label">到達時の残高</div>
+            <div id="final-balance-value" class="metric-value">—</div>
+            <div id="final-jpy-value" class="metric-sub">—</div>
+          </article>
+          <article id="withdrawal-card" class="card metric">
+            <div class="metric-label">出金予定</div>
+            <div id="withdrawal-value" class="metric-value">—</div>
+            <div id="withdrawal-jpy-value" class="metric-sub">—</div>
+          </article>
+          <article class="card metric">
+            <div class="metric-label">出金後の残高</div>
+            <div id="remaining-value" class="metric-value">—</div>
+            <div id="remaining-jpy-value" class="metric-sub">—</div>
+          </article>
+        </div>
+
+        <article class="card detail-card"><p id="goal-detail"></p></article>
+
+        <article class="card table-card">
+          <div class="table-header">
+            <h2>連勝ごとの掛け金推移</h2>
+            <div class="table-actions">
+              <span id="row-count" class="badge">0回分</span>
+              <button id="export-csv" class="secondary-button" type="button">CSV保存</button>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>連勝</th><th>勝負前残高</th><th>掛け金</th><th>勝利利益</th><th>勝利後残高</th><th>残高の円換算</th></tr></thead>
+              <tbody id="result-rows"></tbody>
+            </table>
+          </div>
+        </article>
+        <p class="disclaimer">本ツールは数学的なシミュレーションです。手数料、スプレッド、価格変動、約定条件、税金、取引事業者固有の制限は含みません。連勝を保証するものではありません。</p>
+      </section>
+    </div>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
